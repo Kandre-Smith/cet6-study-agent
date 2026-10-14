@@ -220,7 +220,11 @@ function Listening({ materials, setMaterials, addAttempt, settings }) {
     clearProgressTimer();
     const estimatedMs = Math.max(2500, tokenize(material.text).length * 410 / rate);
     const step = 100 / (estimatedMs / 200);
-    progressTimer.current = setInterval(() => setProgress(value => Math.min(97, value + step)), 200);
+    progressTimer.current = setInterval(() => setProgress(value => {
+      const next = Math.min(97, value + step);
+      setCurrentChar(Math.floor(material.text.length * next / 100));
+      return next;
+    }), 200);
   };
   useEffect(() => {
     setStage(1); setInput(''); setResult(null); setProgress(0); setCurrentChar(0); setPlaying(false); setPaused(false); speechSynthesis.cancel(); clearProgressTimer();
