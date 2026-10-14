@@ -1,0 +1,9 @@
+{
+  "name": "澄听 · CET-6 伴学",
+  "short_name": "澄听",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f1e8",
+  "theme_color": "#17251f",
+  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
