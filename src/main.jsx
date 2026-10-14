@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BookOpen, Headphones, PenLine, Settings, Library, Play, Pause, RotateCcw, Sparkles, ExternalLink, Upload, Eye, EyeOff, Volume2, CheckCircle2, AlertTriangle, QrCode, Plus, Trash2, ArrowRight, WifiOff, Save } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -32,9 +32,13 @@ const examSessions = [
 ].map((date, index) => ({ id: `session-${index}`, date, status: '待导入', writing: 0, listening: 0 }));
 
 const writingPrompts = [
-  { id: 1, tag: '教育', title: '大学生如何有效利用人工智能辅助学习', prompt: 'Write an essay on how college students can use artificial intelligence effectively and responsibly in their studies.' },
-  { id: 2, tag: '社会', title: '志愿服务对大学生发展的意义', prompt: 'Write an essay on the value of volunteer work for the personal development of college students.' },
-  { id: 3, tag: '科技', title: '数字时代保持专注的重要性', prompt: 'Write an essay on the importance of maintaining concentration in the digital age.' }
+  { id: '2024-12-1', tag: '自律', title: '自律对个人成长的重要性', prompt: 'Nowadays, more and more students have realized the importance of self-discipline in their personal growth. Write an essay beginning with this sentence. You can make comments, cite examples, or use your personal experiences to develop your essay. Write 150–200 words.', isPastPaper: true, year: 2024, month: 12, set: 1, sourceName: '新东方网络整理', sourceUrl: 'https://cet4-6.xdf.cn/202412/13999043.html' },
+  { id: '2024-06-1', tag: '数字素养', title: '数字素养与技能的重要性', prompt: 'There is a growing awareness of the importance of digital literacy and skills in today\'s world. Write an essay beginning with this sentence. You can make comments, cite examples, or use your personal experiences to develop your essay. Write 150–200 words.', isPastPaper: true, year: 2024, month: 6, set: 1, sourceName: '新东方网络整理', sourceUrl: 'https://cet6.koolearn.com/20240615/887643.html' },
+  { id: '2023-12-3', tag: '家庭教育', title: '给孩子自主探索的自由', prompt: 'Nowadays, parents are increasingly aware that allowing kids more freedom to explore and learn on their own helps foster their independence and boost their confidence. Write an essay beginning with this sentence. You can make comments, cite examples, or use your personal experiences to develop your essay. Write 150–200 words.', isPastPaper: true, year: 2023, month: 12, set: 3, sourceName: '新东方网络整理', sourceUrl: 'https://cet4-6.xdf.cn/202312/13552912.html' },
+  { id: '2022-12-1', tag: '团队精神', title: '培养大学生的团队精神', prompt: 'Today, increasing importance is being attached to cultivating college students’ team spirit. Write an essay on the importance of team spirit, using comments, examples, or personal experiences to develop your ideas.', isPastPaper: true, year: 2022, month: 12, set: 1, sourceName: '新东方网络整理', sourceUrl: 'https://cet4-6.xdf.cn/202212/12657422.html' },
+  { id: '2022-06-1', tag: '终身学习', title: '学习新技能适应快速变化的世界', prompt: 'Nowadays more and more people keep learning new skills to adapt to a fast-changing world. Write an essay beginning with this sentence. You can make comments, cite examples, or use your personal experiences to develop your essay. Write 150–200 words.', isPastPaper: true, year: 2022, month: 6, set: 1, sourceName: '新东方网络整理', sourceUrl: 'https://cet4-6.xdf.cn/202206/11958877.html' },
+  { id: '2022-06-2', tag: '环保生活', title: '选择环境友好的生活方式', prompt: 'Nowadays more and more people choose to live an environmentally friendly lifestyle. Write an essay beginning with this sentence. You can make comments, cite examples, or use your personal experiences to develop your essay. Write 150–200 words.', isPastPaper: true, year: 2022, month: 6, set: 2, sourceName: '新东方网络整理', sourceUrl: 'https://cet4-6.xdf.cn/202206/11958879.html' },
+  { id: 'mock-ai', tag: '模拟题', title: '大学生如何有效利用人工智能辅助学习', prompt: 'Write an essay on how college students can use artificial intelligence effectively and responsibly in their studies.', isPastPaper: false }
 ];
 
 const phraseCards = [
@@ -77,15 +81,29 @@ function compareDictation(input, reference) {
   return { score: Math.max(0, Math.round((1 - missed.length / target.length) * 100)), missed: [...new Set(missed)], extra: [...new Set(remaining)] };
 }
 
+function isMaskedToken(token, material) {
+  const clean = token.toLowerCase().replace(/[^a-z]/g, '');
+  return !!clean && ((material.keywords || []).some(k => k.toLowerCase().split(/\s+/).includes(clean)) || clean.length >= 10);
+}
+
 function maskText(material, stage) {
-  if (stage === 3) return material.text;
   if (stage === 1) return '▰ '.repeat(Math.max(8, Math.min(28, Math.round(material.text.length / 18))));
-  const keywords = material.keywords || [];
   return material.text.split(/(\s+)/).map(token => {
     const clean = token.toLowerCase().replace(/[^a-z]/g, '');
-    const shouldMask = keywords.some(k => k.toLowerCase().split(' ').includes(clean)) || clean.length >= 10;
+    const shouldMask = isMaskedToken(token, material);
     return shouldMask ? '＿'.repeat(Math.min(10, Math.max(4, clean.length))) + token.replace(/[a-z]/gi, '') : token;
   }).join('');
+}
+
+function TranscriptText({ material, stage, currentChar }) {
+  if (stage < 3) return maskText(material, stage);
+  let cursor = 0;
+  return material.text.split(/(\s+)/).map((token, index) => {
+    const start = cursor; cursor += token.length;
+    if (!token.trim()) return token;
+    const classes = [isMaskedToken(token, material) ? 'revealed-word' : '', currentChar >= cursor ? 'spoken-word' : '', currentChar >= start && currentChar < cursor ? 'current-word' : ''].filter(Boolean).join(' ');
+    return <span key={`${index}-${start}`} className={classes}>{token}</span>;
+  });
 }
 
 function localEssayGrade(text, prompt) {
@@ -195,13 +213,39 @@ function Home({ stats, setPage, materials }) {
 function Listening({ materials, setMaterials, addAttempt, settings }) {
   const [selectedId, setSelectedId] = useState(materials[0]?.id);
   const material = materials.find(m => m.id === selectedId) || materials[0];
-  const [stage, setStage] = useState(1); const [input, setInput] = useState(''); const [playing, setPlaying] = useState(false); const [result, setResult] = useState(null); const [showAdd, setShowAdd] = useState(false); const [showGenerate, setShowGenerate] = useState(false); const [rate, setRate] = useState(0.9);
-  useEffect(() => { setStage(1); setInput(''); setResult(null); speechSynthesis.cancel(); }, [selectedId]);
+  const [stage, setStage] = useState(1); const [input, setInput] = useState(''); const [playing, setPlaying] = useState(false); const [paused, setPaused] = useState(false); const [progress, setProgress] = useState(0); const [currentChar, setCurrentChar] = useState(0); const [result, setResult] = useState(null); const [showAdd, setShowAdd] = useState(false); const [showGenerate, setShowGenerate] = useState(false); const [rate, setRate] = useState(0.9);
+  const progressTimer = useRef(null);
+  const clearProgressTimer = () => { if (progressTimer.current) { clearInterval(progressTimer.current); progressTimer.current = null; } };
+  const startProgressTimer = () => {
+    clearProgressTimer();
+    const estimatedMs = Math.max(2500, tokenize(material.text).length * 410 / rate);
+    const step = 100 / (estimatedMs / 200);
+    progressTimer.current = setInterval(() => setProgress(value => Math.min(97, value + step)), 200);
+  };
+  useEffect(() => {
+    setStage(1); setInput(''); setResult(null); setProgress(0); setCurrentChar(0); setPlaying(false); setPaused(false); speechSynthesis.cancel(); clearProgressTimer();
+    return () => { speechSynthesis.cancel(); clearProgressTimer(); };
+  }, [selectedId]);
   if (!material) return <div className="page"><Empty title="还没有听力材料" action={() => setShowAdd(true)}/><AddMaterialModal open={showAdd} close={() => setShowAdd(false)} onAdd={m => { setMaterials(v=>[m,...v]); setSelectedId(m.id); }}/></div>;
   const speak = () => {
-    if (playing) { speechSynthesis.cancel(); setPlaying(false); return; }
-    const u = new SpeechSynthesisUtterance(material.text); u.lang = 'en-US'; u.rate = rate; u.onend = () => setPlaying(false); u.onerror = () => setPlaying(false); setPlaying(true); speechSynthesis.speak(u);
+    if (playing && !paused) { speechSynthesis.pause(); clearProgressTimer(); setPaused(true); return; }
+    if (playing && paused) { speechSynthesis.resume(); startProgressTimer(); setPaused(false); return; }
+    speechSynthesis.cancel(); setProgress(0); setCurrentChar(0);
+    const u = new SpeechSynthesisUtterance(material.text);
+    let boundaryDriven = false;
+    u.lang = 'en-US'; u.rate = rate;
+    u.onboundary = event => {
+      if (typeof event.charIndex === 'number') {
+        if (!boundaryDriven) { boundaryDriven = true; clearProgressTimer(); }
+        setCurrentChar(event.charIndex);
+        setProgress(Math.min(99, Math.round(event.charIndex / Math.max(1, material.text.length) * 100)));
+      }
+    };
+    u.onend = () => { clearProgressTimer(); setProgress(100); setCurrentChar(material.text.length); setPlaying(false); setPaused(false); };
+    u.onerror = event => { if (event.error !== 'canceled' && event.error !== 'interrupted') console.warn('Speech synthesis error:', event.error); clearProgressTimer(); setPlaying(false); setPaused(false); };
+    setPlaying(true); setPaused(false); startProgressTimer(); speechSynthesis.speak(u);
   };
+  const resetSpeech = () => { speechSynthesis.cancel(); clearProgressTimer(); setPlaying(false); setPaused(false); setProgress(0); setCurrentChar(0); };
   const submit = () => { const r = compareDictation(input, material.text); setResult(r); addAttempt({kind:'listening', score:r.score, title:material.title, at:Date.now()}); };
   return <div className="page">
     <header className="page-head"><div><span className="eyebrow">LISTENING STUDIO</span><h1>三遍渐显精听</h1><p>先听懂轮廓，再捕捉关键词，最后核对完整表达。</p></div><div className="head-actions"><button className="outline-button" onClick={() => setShowGenerate(true)}><Sparkles size={17}/> AI 模拟材料</button><button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={17}/> 导入真题原文</button></div></header>
@@ -211,8 +255,8 @@ function Listening({ materials, setMaterials, addAttempt, settings }) {
         <div className="studio-meta"><div><span className="source-pill">{material.source}</span><span>{material.type} · {material.level}</span></div><span>{tokenize(material.text).length} words</span></div>
         <h2>{material.title}</h2>
         <div className="stage-tabs">{[1,2,3].map(n=><button key={n} className={stage===n?'active':''} onClick={()=>setStage(n)}><b>0{n}</b><span>{n===1?'盲听':n===2?'半遮':'全文'}</span></button>)}</div>
-        <div className={`transcript stage-${stage}`}><div className="stage-label">{stage===1?'原文已全部隐藏':stage===2?'重点信息仍被遮住':'完整原文与核对'}</div><p>{maskText(material, stage)}</p></div>
-        <div className="player"><button className="play" onClick={speak}>{playing?<Pause/>:<Play fill="currentColor"/>}</button><div className="fake-track"><i style={{width:playing?'66%':'0%'}}/></div><select value={rate} onChange={e=>setRate(Number(e.target.value))}><option value="0.75">0.75×</option><option value="0.9">0.9×</option><option value="1">1.0×</option><option value="1.15">1.15×</option></select><button className="icon-button" onClick={()=>{speechSynthesis.cancel();setPlaying(false)}}><RotateCcw size={18}/></button></div>
+        <div className={`transcript stage-${stage}`}><div className="stage-label">{stage===1?'原文已全部隐藏':stage===2?'重点信息仍被遮住':<><span>完整原文与同步核对</span><i className="reveal-legend">金色词 = 第二遍遮挡词</i></>}</div><p><TranscriptText material={material} stage={stage} currentChar={currentChar}/></p></div>
+        <div className="player"><button className="play" aria-label={playing&&!paused?'暂停':'播放'} onClick={speak}>{playing&&!paused?<Pause/>:<Play fill="currentColor"/>}</button><div className="track-wrap"><div className="fake-track"><i style={{width:`${progress}%`}}/></div><span>{Math.round(progress)}%</span></div><select value={rate} onChange={e=>{resetSpeech();setRate(Number(e.target.value))}}><option value="0.75">0.75×</option><option value="0.9">0.9×</option><option value="1">1.0×</option><option value="1.15">1.15×</option></select><button className="icon-button" aria-label="重新开始" onClick={resetSpeech}><RotateCcw size={18}/></button></div>
         <label className="input-label">写下你听到的内容<textarea value={input} onChange={e=>setInput(e.target.value)} placeholder="Type what you hear…"/></label>
         <div className="action-row"><button className="primary-button" onClick={submit}>检查听写</button><button className="outline-button" onClick={()=>setStage(Math.min(3,stage+1))}>{stage===3?'已经显示全文':'进入下一遍'} <ArrowRight size={16}/></button></div>
         {result && <div className="result-card"><div className="score-ring"><b>{result.score}</b><span>%</span></div><div><h3>{result.score>=80?'听得很扎实':'找到漏听点了'}</h3><p><b>漏听：</b>{result.missed.slice(0,15).join(' · ') || '无明显漏词'}</p>{result.extra.length>0&&<p><b>多写：</b>{result.extra.slice(0,10).join(' · ')}</p>}</div></div>}
@@ -234,7 +278,7 @@ function VideoLinks() {
 }
 
 function Writing({ settings, addAttempt }) {
-  const [promptId, setPromptId] = useState(1); const [text, setText] = useState(''); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const prompt = writingPrompts.find(p=>p.id===promptId);
+  const [promptId, setPromptId] = useState(writingPrompts[0].id); const [text, setText] = useState(''); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const prompt = writingPrompts.find(p=>p.id===promptId) || writingPrompts[0];
   const grade = async () => {
     if (!text.trim()) return;
     setLoading(true);
@@ -258,7 +302,7 @@ function Writing({ settings, addAttempt }) {
     finally { setLoading(false); }
   };
   return <div className="page"><header className="page-head"><div><span className="eyebrow">WRITING LAB</span><h1>六级作文评估</h1><p>先独立完成，再用反馈改写；分数为训练预估，不等同官方成绩。</p></div><span className={`api-status ${settings.apiKey?'on':''}`}>{settings.apiKey?<><CheckCircle2/> AI 已连接</>:<><WifiOff/> 本地保底模式</>}</span></header>
-    <div className="writing-layout"><section className="editor-card"><div className="prompt-switch">{writingPrompts.map(p=><button className={promptId===p.id?'active':''} key={p.id} onClick={()=>setPromptId(p.id)}>{p.tag}</button>)}</div><span className="eyebrow">WRITING TASK</span><h2>{prompt.title}</h2><p className="prompt-en">{prompt.prompt}</p><div className="timer-row"><span>建议用时 30:00</span><span>{tokenize(text).length} words</span></div><textarea className="essay-area" value={text} onChange={e=>setText(e.target.value)} placeholder="Start writing your essay here…"/><button className="primary-button wide" onClick={grade} disabled={loading||!text.trim()}>{loading?'正在评估…':settings.apiKey?'提交 AI 评估':'使用本地规则预评估'} <Sparkles size={17}/></button></section>
+    <div className="writing-layout"><section className="editor-card"><div className="prompt-switch">{writingPrompts.map(p=><button className={promptId===p.id?'active':''} key={p.id} onClick={()=>{setPromptId(p.id);setResult(null)}}>{p.isPastPaper?`${String(p.year).slice(2)}.${String(p.month).padStart(2,'0')} · ${p.set}套`:p.tag}</button>)}</div>{prompt.isPastPaper?<div className="paper-meta"><span>六级真题</span><b>{prompt.year}年{prompt.month}月 · 第{prompt.set}套</b><a href={prompt.sourceUrl} target="_blank" rel="noreferrer">{prompt.sourceName} <ExternalLink size={13}/></a></div>:<div className="paper-meta mock"><span>原创模拟</span><b>非考试真题</b></div>}<span className="eyebrow">WRITING TASK</span><h2>{prompt.title}</h2><p className="prompt-en">{prompt.prompt}</p><div className="timer-row"><span>建议用时 30:00</span><span>{tokenize(text).length} words</span></div><textarea className="essay-area" value={text} onChange={e=>setText(e.target.value)} placeholder="Start writing your essay here…"/><button className="primary-button wide" onClick={grade} disabled={loading||!text.trim()}>{loading?'正在评估…':settings.apiKey?'提交 AI 评估':'使用本地规则预评估'} <Sparkles size={17}/></button></section>
       <aside>{result?<GradeResult result={result}/>:<div className="guide-card"><span className="eyebrow">BEFORE YOU WRITE</span><h3>先抓住三个支点</h3><ol><li><b>明确立场</b><span>第一段直接回应题目。</span></li><li><b>展开论证</b><span>每个主体段只讲一个中心。</span></li><li><b>落到行动</b><span>结尾给出具体而非空泛的建议。</span></li></ol></div>}<div className="phrase-card"><span className="eyebrow">USEFUL PHRASES</span>{phraseCards.slice(0,3).map(p=><div key={p[1]}><b>{p[1]}</b><small>{p[2]}</small></div>)}</div></aside>
     </div></div>;
 }
